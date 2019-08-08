@@ -5,7 +5,7 @@ authors = ["STEAMROLLER"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/steamroller-airmash/serde-deserialize-over"
-public = false
+publish = false
 
 [lib]
 proc-macro = true
