@@ -1,0 +1,18 @@
+[package]
+name = "serde-deserialize-over-derive"
+version = "0.1.0"
+authors = ["STEAMROLLER"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "0.15"
+quote = "0.6"
+proc-macro-rules = "0.2"
+proc-macro2 = "*"
+proc-macro-crate = "0.1"
+

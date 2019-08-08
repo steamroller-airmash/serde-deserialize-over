@@ -1,0 +1,6 @@
+
+[workspace]
+members = [
+    "serde-deserialize-over",
+    "serde-deserialize-over-derive"
+]
