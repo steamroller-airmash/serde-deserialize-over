@@ -285,7 +285,7 @@ fn impl_named_fields(
     })
     .collect::<Result<Vec<_>, syn::Error>>()?;
 
-    return impl_generic(struct_name, crate_name, fieldinfos, true);
+    return impl_generic(struct_name, crate_name, fieldinfos, false);
 }
 
 fn impl_unnamed_fields(
