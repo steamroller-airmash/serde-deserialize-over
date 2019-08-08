@@ -1,5 +1,3 @@
-#![feature(trace_macros, log_syntax)]
-
 use serde_deserialize_over::DeserializeOver;
 
 #[derive(Default, DeserializeOver, Debug)]
