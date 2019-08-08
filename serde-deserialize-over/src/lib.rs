@@ -1,5 +1,13 @@
 #[doc(hidden)]
-pub use serde;
+pub mod export {
+    pub use serde::de::{Error, MapAccess, SeqAccess, Unexpected, Visitor};
+    pub use serde::{Deserialize, Deserializer};
+
+    pub use std::fmt;
+    pub use std::marker::PhantomData;
+    pub use std::option::Option::{None, Some};
+    pub use std::result::Result::{self, Err, Ok};
+}
 
 use serde::{de::DeserializeSeed, Deserialize, Deserializer};
 pub use serde_deserialize_over_derive::DeserializeOver;

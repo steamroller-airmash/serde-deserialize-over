@@ -1,13 +1,14 @@
+use serde_derive::Deserialize;
 use serde_deserialize_over::DeserializeOver;
 
-#[derive(Default, DeserializeOver, Debug)]
+#[derive(Default, DeserializeOver, Debug, Deserialize)]
 struct StructA {
     #[deserialize_over]
     pub a: StructB,
     pub b: i32,
 }
 
-#[derive(Default, DeserializeOver, Debug)]
+#[derive(Default, DeserializeOver, Debug, Deserialize)]
 struct StructB {
     pub x: usize,
     pub y: String,

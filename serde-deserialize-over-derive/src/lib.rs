@@ -8,7 +8,7 @@ use proc_macro_crate::crate_name;
 use quote::quote;
 use syn::{
     parse_macro_input, Attribute, Data, DeriveInput, Error, Fields, FieldsNamed, FieldsUnnamed,
-    Ident, Meta,
+    Ident, Meta
 };
 
 #[proc_macro_derive(DeserializeOver, attributes(deserialize_over))]
@@ -38,70 +38,254 @@ pub fn derive(input: TokenStream) -> TokenStream {
     }
 }
 
-fn impl_named_fields(
+#[derive(Clone)]
+struct FieldInfo {
+    name: Ident,
+    passthrough: bool,
+}
+
+fn impl_generic(
     struct_name: Ident,
-    crate_name: Ident,
-    fields: FieldsNamed,
+    real_crate_name: Ident,
+    fields: Vec<FieldInfo>,
+    fields_numbered: bool
 ) -> syn::Result<TokenStream> {
-    let map = Ident::new("map", Span::call_site());
-    let visitor = visitor_name();
+    let deserializer = Ident::new("__deserializer", Span::call_site());
+    let crate_name = Ident::new("_serde_deserialize_over", Span::call_site());
+    let export = quote! { #crate_name::export };
 
-    let fields = fields
-        .named
+    let field_enums = fields
         .iter()
-        .map(|field| {
-            let attrs = parse_attr(field.attrs.iter())?;
-            let field_name = field.ident.as_ref().unwrap();
+        .cloned()
+        .enumerate()
+        .map(|(idx, x)| Ident::new(&format!("__field{}", idx), x.name.span()))
+        .collect::<Vec<_>>();
+    let field_enums = &field_enums;
+    let field_enums_copy1 = field_enums;
+    let field_enums_copy2 = field_enums;
+    let field_names = fields.iter().map(|x| &x.name).cloned().collect::<Vec<_>>();
+    let field_names = &field_names;
+    let indices = (0usize..fields.len()).collect::<Vec<_>>();
+    let indices_u64 = indices.iter().map(|x| *x as u64);
 
-            Ok(if attrs.use_deserialize_over {
-                quote! {
-                  stringify!(#field_name) => #map.next_value_seed(
-                    ::#crate_name::DeserializeOverWrapper(&mut (self.0).#field_name)
-                  )?
-                }
-            } else {
-                quote! {
-                  stringify!(#field_name) => (self.0).#field_name = #map.next_value()?
-                }
-            })
-        })
-        .collect::<Result<Vec<proc_macro2::TokenStream>, Error>>()?;
+    let missing_field_error_str = syn::LitStr::new(
+      &format!("field index between 0 <= i < {}", fields.len()), 
+      Span::call_site()
+    );
 
-    Ok(quote! {
-      impl ::#crate_name::DeserializeOver for #struct_name {
-        fn deserialize_over<'de, D>(&mut self, de: D) -> Result<(), D::Error>
+    let visit_str_and_bytes_impl = if !fields_numbered {
+      let names_str = field_names.iter()
+        .map(|x| syn::LitStr::new(&x.to_string(), x.span()))
+        .collect::<Vec<_>>();
+      let names_bytes = field_names.iter()
+        .map(|x| syn::LitByteStr::new(x.to_string().as_bytes(), x.span()))
+        .collect::<Vec<_>>();
+
+      quote! {
+        fn visit_str<E>(self, value: &str) -> #export::Result<Self::Value, E>
         where
-          D: ::#crate_name::serde::Deserializer<'de>
+          E: #export::Error
         {
-          struct #visitor<'a>(pub &'a mut #struct_name);
+          #export::Ok(match value {
+            #( #names_str => __Field::#field_enums, )*
+            _ => __Field::__ignore
+          })
+        }
 
-          impl<'a, 'de> ::#crate_name::serde::de::Visitor<'de> for #visitor<'a> {
-            type Value = ();
+        fn visit_bytes<E>(self, value: &[u8]) -> #export::Result<Self::Value, E>
+        where
+          E: #export::Error
+        {
+          #export::Ok(match value {
+            #( #names_bytes => __Field::#field_enums, )*
+            _ => __Field::__ignore
+          })
+        }
+      }
+    } else {
+      quote! {}
+    };
 
-            fn expecting(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-              write!(fmt, concat!("an instance of ", stringify!(#struct_name)))
+    let map_de_entries = fields.iter()
+      .map(|field| {
+        let ref name = field.name;
+        if field.passthrough {
+          quote! { #crate_name::DeserializeOverWrapper(&mut (self.0).#name) }
+        } else {
+          quote! { (self.0).#name = map.next_value()? }
+        }
+      })
+      .collect::<Vec<_>>();
+
+    let visit_seq_entries = fields.iter()
+      .map(|field| {
+        let ref name = field.name;
+        if field.passthrough {
+          quote! {
+            match seq.next_element_seed(
+              #crate_name::DeserializeOverWrapper(&mut (self.0).#name)
+            )? {
+              Some(()) => (),
+              None => return Ok(())
+            }
+          }
+        } else {
+          quote! {
+            (self.0).#name = match seq.next_element()? {
+              Some(x) => x,
+              None => return Ok(())
+            }
+          }
+        }
+      })
+      .collect::<Vec<_>>();
+
+    let inner = quote! {
+      #[allow(unknown_lints)]
+      #[allow(rust_2018_idioms)]
+      extern crate #real_crate_name as #crate_name;
+
+      #[automatically_derived]
+      impl DeserializeOver for #struct_name {
+        fn deserialize_over<'de, D>(&mut self, #deserializer: D) -> #export::Result<(), D::Error>
+        where
+          D: #export::Deserializer<'de>
+        {
+          #[allow(non_camel_case_types)]
+          enum __Field {
+            #( #field_enums, )*
+            __ignore
+          }
+          impl<'de> #export::Deserialize<'de> for __Field {
+            fn deserialize<D>(#deserializer: D) -> #export::Result<Self, D::Error>
+            where
+              D: #export::Deserializer<'de>
+            {
+              #export::Deserializer::deserialize_identifier(#deserializer, __FieldVisitor)
+            }
+          }
+
+          struct __FieldVisitor;
+          impl<'de> #export::Visitor<'de> for __FieldVisitor {
+            type Value = __Field;
+
+            fn expecting(&self, fmt: &mut #export::fmt::Formatter) -> #export::fmt::Result {
+              #export::fmt::Formatter::write_str(fmt, "field identifier")
             }
 
-            fn visit_map<A>(self, mut #map: A) -> Result<(), A::Error>
+            fn visit_u64<E>(self, value: u64) -> #export::Result<Self::Value, E>
             where
-              A: ::#crate_name::serde::de::MapAccess<'de>
+              E: #export::Error
             {
-              while let Some(key) = #map.next_key::<&str>()? {
+              use #export::{Ok, Err};
+
+              Ok(match value {
+                #( #indices_u64 => __Field::#field_enums, )*
+                _ => return Err(#export::Error::invalid_value(
+                  #export::Unexpected::Unsigned(value),
+                  &#missing_field_error_str
+                ))
+              })
+            }
+          
+            #visit_str_and_bytes_impl
+          }
+        
+          struct __Visitor<'a>(pub &'a mut #struct_name);
+
+          impl<'a, 'de> #export::Visitor<'de> for __Visitor<'a> {
+            type Value = ();
+
+            fn expecting(&self, fmt: &mut #export::fmt::Formatter) -> #export::fmt::Result {
+              #export::fmt::Formatter::write_str(fmt, concat!("struct ", stringify!(#struct_name)))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> #export::Result<Self::Value, A::Error>
+            where
+              A: #export::SeqAccess<'de>
+            {
+              use #export::{Some, None};
+
+              #( #visit_seq_entries; )*
+
+              Ok(())
+            }
+          
+            fn visit_map<A>(self, mut map: A) -> #export::Result<Self::Value, A::Error>
+            where
+              A: #export::MapAccess<'de>
+            {
+              use #export::{Some, None, Error};
+
+              // State tracking
+              #(
+                let mut #field_enums: bool = false;
+              )*
+
+              while let Some(key) = map.next_key::<__Field>()? {
                 match key {
-                  #( #fields, )*
-                  _ => ()
+                  #( 
+                    __Field::#field_enums => if #field_enums_copy1 {
+                      return Err(<A::Error as Error>::duplicate_field(stringify!(#field_names)));
+                    } else {
+                      #field_enums_copy2 = true;
+                      #map_de_entries;
+                    } 
+                  )*
+                  _ => (),
                 }
               }
 
               Ok(())
             }
           }
+        
+          const FIELDS: &[&str] = &[
+            #( stringify!(#field_names), )*
+          ];
 
-          de.deserialize_map(#visitor(self))
+          #export::Deserializer::deserialize_struct(
+            #deserializer,
+            stringify!(#struct_name),
+            FIELDS,
+            __Visitor(self)
+          )
         }
       }
-    }
-    .into())
+    };
+
+    let const_name = Ident::new(
+        &format!("_IMPL_DESERIALIZE_OVER_FOR_{}", struct_name),
+        struct_name.span(),
+    );
+
+    Ok(
+      quote! {
+        #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+        const #const_name: () = {
+          #inner
+        };
+      }.into()
+    )
+}
+
+fn impl_named_fields(
+    struct_name: Ident,
+    crate_name: Ident,
+    fields: FieldsNamed,
+) -> syn::Result<TokenStream> {
+  let fieldinfos = fields.named.iter()
+    .map(|x| {
+      let attrinfo = parse_attr(x.attrs.iter())?;
+
+      Ok(FieldInfo {
+        name: x.ident.clone().unwrap(),
+        passthrough: attrinfo.use_deserialize_over
+      })
+    })
+    .collect::<Result<Vec<_>, syn::Error>>()?;
+
+    return impl_generic(struct_name, crate_name, fieldinfos, true);
 }
 
 fn impl_unnamed_fields(
@@ -156,11 +340,4 @@ where
     }
 
     Ok(result)
-}
-
-fn visitor_name() -> Ident {
-    Ident::new(
-        "_Serde_Deserialize_Over_Visitor_109210701893",
-        Span::call_site(),
-    )
 }
