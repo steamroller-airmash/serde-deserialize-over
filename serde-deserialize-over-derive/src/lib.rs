@@ -110,7 +110,11 @@ fn impl_generic(
       .map(|field| {
         let ref name = field.name;
         if field.passthrough {
-          quote! { #crate_name::DeserializeOverWrapper(&mut (self.0).#name) }
+          quote! { 
+            map.next_value_seed(
+              #crate_name::DeserializeOverWrapper(&mut (self.0).#name)
+            )?
+          }
         } else {
           quote! { (self.0).#name = map.next_value()? }
         }
