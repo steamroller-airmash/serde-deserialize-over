@@ -27,7 +27,7 @@ fn main() {
         a: StructB {
             x: StructC {
                 x: 2,
-                y: "another string".to_owned()
+                y: "another string".to_owned(),
             },
             y: "a string".to_owned(),
         },

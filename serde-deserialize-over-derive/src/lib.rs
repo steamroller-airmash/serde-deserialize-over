@@ -7,8 +7,8 @@ use proc_macro2::Span;
 use proc_macro_crate::crate_name;
 use quote::quote;
 use syn::{
-    parse_macro_input, Attribute, Data, DeriveInput, Error, Fields, FieldsNamed, FieldsUnnamed,
-    Ident, Meta
+    parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Error, Fields, FieldsNamed,
+    FieldsUnnamed, Ident, Meta,
 };
 
 #[proc_macro_derive(DeserializeOver, attributes(deserialize_over))]
@@ -48,7 +48,7 @@ fn impl_generic(
     struct_name: Ident,
     real_crate_name: Ident,
     fields: Vec<FieldInfo>,
-    fields_numbered: bool
+    fields_numbered: bool,
 ) -> syn::Result<TokenStream> {
     let deserializer = Ident::new("__deserializer", Span::call_site());
     let crate_name = Ident::new("_serde_deserialize_over", Span::call_site());
@@ -69,80 +69,84 @@ fn impl_generic(
     let indices_u64 = indices.iter().map(|x| *x as u64);
 
     let missing_field_error_str = syn::LitStr::new(
-      &format!("field index between 0 <= i < {}", fields.len()), 
-      Span::call_site()
+        &format!("field index between 0 <= i < {}", fields.len()),
+        Span::call_site(),
     );
 
     let visit_str_and_bytes_impl = if !fields_numbered {
-      let names_str = field_names.iter()
-        .map(|x| syn::LitStr::new(&x.to_string(), x.span()))
-        .collect::<Vec<_>>();
-      let names_bytes = field_names.iter()
-        .map(|x| syn::LitByteStr::new(x.to_string().as_bytes(), x.span()))
-        .collect::<Vec<_>>();
+        let names_str = field_names
+            .iter()
+            .map(|x| syn::LitStr::new(&x.to_string(), x.span()))
+            .collect::<Vec<_>>();
+        let names_bytes = field_names
+            .iter()
+            .map(|x| syn::LitByteStr::new(x.to_string().as_bytes(), x.span()))
+            .collect::<Vec<_>>();
 
-      quote! {
-        fn visit_str<E>(self, value: &str) -> #export::Result<Self::Value, E>
-        where
-          E: #export::Error
-        {
-          #export::Ok(match value {
-            #( #names_str => __Field::#field_enums, )*
-            _ => __Field::__ignore
-          })
-        }
+        quote! {
+          fn visit_str<E>(self, value: &str) -> #export::Result<Self::Value, E>
+          where
+            E: #export::Error
+          {
+            #export::Ok(match value {
+              #( #names_str => __Field::#field_enums, )*
+              _ => __Field::__ignore
+            })
+          }
 
-        fn visit_bytes<E>(self, value: &[u8]) -> #export::Result<Self::Value, E>
-        where
-          E: #export::Error
-        {
-          #export::Ok(match value {
-            #( #names_bytes => __Field::#field_enums, )*
-            _ => __Field::__ignore
-          })
+          fn visit_bytes<E>(self, value: &[u8]) -> #export::Result<Self::Value, E>
+          where
+            E: #export::Error
+          {
+            #export::Ok(match value {
+              #( #names_bytes => __Field::#field_enums, )*
+              _ => __Field::__ignore
+            })
+          }
         }
-      }
     } else {
-      quote! {}
+        quote! {}
     };
 
-    let map_de_entries = fields.iter()
-      .map(|field| {
-        let ref name = field.name;
-        if field.passthrough {
-          quote! { 
-            map.next_value_seed(
-              #crate_name::DeserializeOverWrapper(&mut (self.0).#name)
-            )?
-          }
-        } else {
-          quote! { (self.0).#name = map.next_value()? }
-        }
-      })
-      .collect::<Vec<_>>();
+    let map_de_entries = fields
+        .iter()
+        .map(|field| {
+            let ref name = field.name;
+            if field.passthrough {
+                quote! {
+                  map.next_value_seed(
+                    #crate_name::DeserializeOverWrapper(&mut (self.0).#name)
+                  )?
+                }
+            } else {
+                quote! { (self.0).#name = map.next_value()? }
+            }
+        })
+        .collect::<Vec<_>>();
 
-    let visit_seq_entries = fields.iter()
-      .map(|field| {
-        let ref name = field.name;
-        if field.passthrough {
-          quote! {
-            match seq.next_element_seed(
-              #crate_name::DeserializeOverWrapper(&mut (self.0).#name)
-            )? {
-              Some(()) => (),
-              None => return Ok(())
+    let visit_seq_entries = fields
+        .iter()
+        .map(|field| {
+            let ref name = field.name;
+            if field.passthrough {
+                quote! {
+                  match seq.next_element_seed(
+                    #crate_name::DeserializeOverWrapper(&mut (self.0).#name)
+                  )? {
+                    Some(()) => (),
+                    None => return Ok(())
+                  }
+                }
+            } else {
+                quote! {
+                  (self.0).#name = match seq.next_element()? {
+                    Some(x) => x,
+                    None => return Ok(())
+                  }
+                }
             }
-          }
-        } else {
-          quote! {
-            (self.0).#name = match seq.next_element()? {
-              Some(x) => x,
-              None => return Ok(())
-            }
-          }
-        }
-      })
-      .collect::<Vec<_>>();
+        })
+        .collect::<Vec<_>>();
 
     let inner = quote! {
       #[allow(unknown_lints)]
@@ -191,10 +195,10 @@ fn impl_generic(
                 ))
               })
             }
-          
+
             #visit_str_and_bytes_impl
           }
-        
+
           struct __Visitor<'a>(pub &'a mut #struct_name);
 
           impl<'a, 'de> #export::Visitor<'de> for __Visitor<'a> {
@@ -214,7 +218,7 @@ fn impl_generic(
 
               Ok(())
             }
-          
+
             fn visit_map<A>(self, mut map: A) -> #export::Result<Self::Value, A::Error>
             where
               A: #export::MapAccess<'de>
@@ -228,13 +232,13 @@ fn impl_generic(
 
               while let Some(key) = map.next_key::<__Field>()? {
                 match key {
-                  #( 
+                  #(
                     __Field::#field_enums => if #field_enums_copy1 {
                       return Err(<A::Error as Error>::duplicate_field(stringify!(#field_names)));
                     } else {
                       #field_enums_copy2 = true;
                       #map_de_entries;
-                    } 
+                    }
                   )*
                   _ => (),
                 }
@@ -243,7 +247,7 @@ fn impl_generic(
               Ok(())
             }
           }
-        
+
           const FIELDS: &[&str] = &[
             #( stringify!(#field_names), )*
           ];
@@ -263,14 +267,13 @@ fn impl_generic(
         struct_name.span(),
     );
 
-    Ok(
-      quote! {
-        #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
-        const #const_name: () = {
-          #inner
-        };
-      }.into()
-    )
+    Ok(quote! {
+      #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+      const #const_name: () = {
+        #inner
+      };
+    }
+    .into())
 }
 
 fn impl_named_fields(
@@ -278,16 +281,18 @@ fn impl_named_fields(
     crate_name: Ident,
     fields: FieldsNamed,
 ) -> syn::Result<TokenStream> {
-  let fieldinfos = fields.named.iter()
-    .map(|x| {
-      let attrinfo = parse_attr(x.attrs.iter())?;
+    let fieldinfos = fields
+        .named
+        .iter()
+        .map(|x| {
+            let attrinfo = parse_attr(x.attrs.iter())?;
 
-      Ok(FieldInfo {
-        name: x.ident.clone().unwrap(),
-        passthrough: attrinfo.use_deserialize_over
-      })
-    })
-    .collect::<Result<Vec<_>, syn::Error>>()?;
+            Ok(FieldInfo {
+                name: x.ident.clone().unwrap(),
+                passthrough: attrinfo.use_deserialize_over,
+            })
+        })
+        .collect::<Result<Vec<_>, syn::Error>>()?;
 
     return impl_generic(struct_name, crate_name, fieldinfos, false);
 }
@@ -327,13 +332,14 @@ where
 
     for attr in attrs.into_iter() {
         let meta = attr.parse_meta()?;
-        let name = meta.name();
+        let name = meta.path();
 
         match meta {
-            Meta::Word(ref ident) if ident == "deserialize_over" => {
-                result.use_deserialize_over = true;
+            Meta::Path(ref path) => {
+                if path.is_ident("deserialize_over") {
+                    result.use_deserialize_over = true;
+                }
             }
-            Meta::Word(_) => (),
             Meta::List(_) | Meta::NameValue(_) => {
                 return Err(Error::new(
                     name.span(),
