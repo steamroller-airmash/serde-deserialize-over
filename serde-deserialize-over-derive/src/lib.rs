@@ -7,8 +7,8 @@ use proc_macro2::Span;
 use proc_macro_crate::crate_name;
 use quote::quote;
 use syn::{
-    parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Error, Fields, FieldsNamed,
-    FieldsUnnamed, Ident, Meta,
+    parse_macro_input, Attribute, Data, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Ident,
+    Meta,
 };
 
 #[proc_macro_derive(DeserializeOver, attributes(deserialize_over))]
@@ -331,21 +331,13 @@ where
     let mut result = ParsedAttr::default();
 
     for attr in attrs.into_iter() {
-        let meta = attr.parse_meta()?;
-        let name = meta.path();
-
-        match meta {
+        match attr.parse_meta()? {
             Meta::Path(ref path) => {
                 if path.is_ident("deserialize_over") {
                     result.use_deserialize_over = true;
                 }
             }
-            Meta::List(_) | Meta::NameValue(_) => {
-                return Err(Error::new(
-                    name.span(),
-                    "invalid deserialize_over attribute",
-                ));
-            }
+            Meta::List(_) | Meta::NameValue(_) => (),
         }
     }
 
