@@ -3,6 +3,32 @@ use serde::de::{SeqAccess, Visitor};
 use serde::Deserializer;
 use std::fmt;
 
+impl<'de> DeserializeOver<'de> for () {
+  fn deserialize_over<D>(&mut self, de: D) -> Result<(), D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct NoopVisitor;
+
+    impl<'de> Visitor<'de> for NoopVisitor {
+      type Value = ();
+
+      fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str("a unit")
+      }
+
+      fn visit_unit<E>(self) -> Result<Self::Value, E>
+      where
+        E: serde::de::Error,
+      {
+        Ok(())
+      }
+    }
+
+    de.deserialize_unit(NoopVisitor)
+  }
+}
+
 macro_rules! tuple_impl {
   ( $( $x:ident ),+ ) => {
     #[allow(non_snake_case)]
@@ -50,17 +76,18 @@ macro_rules! tuple_impl {
   }
 }
 
-macro_rules! tuple_impl_stacked {
-  ( $x:ident ) => {
-    tuple_impl!($x);
-  };
-  ( $head:ident, $( $rest:ident ),+ ) => {
-    tuple_impl!($head, $( $rest ),+);
-    tuple_impl_stacked!($( $rest ),+);
-  };
-}
-
-tuple_impl_stacked!(
-  X0, X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12, X13, X14, X15, X16, X17, X18, X19, X20,
-  X21, X22, X23, X24, X25, X26, X27, X28, X29, X30, X31
-);
+tuple_impl!(A);
+tuple_impl!(A, B);
+tuple_impl!(A, B, C);
+tuple_impl!(A, B, C, D);
+tuple_impl!(A, B, C, D, E);
+tuple_impl!(A, B, C, D, E, F);
+tuple_impl!(A, B, C, D, E, F, G);
+tuple_impl!(A, B, C, D, E, F, G, H);
+tuple_impl!(A, B, C, D, E, F, G, H, I);
+tuple_impl!(A, B, C, D, E, F, G, H, I, J);
+tuple_impl!(A, B, C, D, E, F, G, H, I, J, K);
+tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L);
+tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L, M);
+tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L, M, N);
+tuple_impl!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O);
