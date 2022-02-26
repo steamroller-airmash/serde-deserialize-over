@@ -4,19 +4,24 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use proc_macro_crate::crate_name;
+use proc_macro_crate::{crate_name, FoundCrate};
 use quote::quote;
 use syn::{
     parse_macro_input, Attribute, Data, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Ident,
     Meta,
 };
 
+const CRATE_NAME: &str = "serde_deserialize_over";
+
 #[proc_macro_derive(DeserializeOver, attributes(deserialize_over))]
 pub fn derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let crate_name =
-        crate_name("serde-deserialize-over").unwrap_or("serde_deserialize_over".to_string());
-    let crate_name = Ident::new(&crate_name, Span::call_site());
+        crate_name("serde-deserialize-over").unwrap_or(FoundCrate::Name(CRATE_NAME.to_string()));
+    let crate_name = match crate_name {
+        FoundCrate::Name(name) => Ident::new(&name, Span::call_site()),
+        FoundCrate::Itself => Ident::new(CRATE_NAME, Span::call_site()),
+    };
 
     let struct_name = input.ident;
 
