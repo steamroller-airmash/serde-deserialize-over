@@ -56,7 +56,7 @@ fn impl_generic(
     fields_numbered: bool,
 ) -> syn::Result<TokenStream> {
     let deserializer = Ident::new("__deserializer", Span::call_site());
-    let crate_name = Ident::new("_serde_deserialize_over", Span::call_site());
+    let crate_name = Ident::new(&("_".to_owned() + CRATE_NAME), Span::call_site());
     let export = quote! { #crate_name::export };
 
     let field_enums = fields
