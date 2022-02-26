@@ -6,7 +6,7 @@ struct OptionVisitor<'a, U>(&'a mut Option<U>);
 
 impl<'a, 'de, U> Visitor<'de> for OptionVisitor<'a, U>
 where
-    U: DeserializeOver + Deserialize<'de>,
+    U: DeserializeOver<'de> + Deserialize<'de>,
 {
     type Value = ();
 
@@ -31,11 +31,11 @@ where
     }
 }
 
-impl<T> DeserializeOver for Option<T>
+impl<'de, T> DeserializeOver<'de> for Option<T>
 where
-    T: DeserializeOver + for<'d> Deserialize<'d>,
+    T: DeserializeOver<'de> + Deserialize<'de>,
 {
-    fn deserialize_over<'de, D>(&mut self, de: D) -> Result<(), D::Error>
+    fn deserialize_over<D>(&mut self, de: D) -> Result<(), D::Error>
     where
         D: Deserializer<'de>,
     {
