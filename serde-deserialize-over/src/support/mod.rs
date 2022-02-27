@@ -3,6 +3,7 @@
 mod array;
 mod option;
 mod tuple;
+mod map;
 
 use crate::DeserializeOver;
 use serde::de::{DeserializeSeed, Deserializer};
