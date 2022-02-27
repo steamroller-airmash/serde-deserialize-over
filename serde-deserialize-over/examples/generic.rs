@@ -8,8 +8,7 @@ struct ExampleStruct<T> {
 
 const JSON: &str = r#"{ "a": "test" }"#;
 
-#[test]
-fn works() {
+fn main() {
   let mut instance = ExampleStruct::<String> {
     a: "a string".to_owned(),
     b: 64,
@@ -20,6 +19,5 @@ fn works() {
     .deserialize_over(&mut de)
     .expect("Failed to deserialize");
 
-  assert_eq!(instance.a, "test");
-  assert_eq!(instance.b, 64);
+  println!("{:#?}", instance);
 }

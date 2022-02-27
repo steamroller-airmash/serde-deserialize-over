@@ -9,7 +9,8 @@ use proc_macro2::Span;
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::quote;
 use syn::{
-  parse_macro_input, Attribute, Data, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Ident, Meta,
+  parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Fields, FieldsNamed, FieldsUnnamed,
+  Ident, Meta, Type,
 };
 
 const CRATE_NAME: &str = "serde_deserialize_over";
@@ -25,22 +26,23 @@ pub fn derive(input: TokenStream) -> TokenStream {
     FoundCrate::Itself => Ident::new(CRATE_NAME, Span::call_site()),
   };
 
-  let struct_name = input.ident;
-
   let data = match input.data {
-    Data::Struct(data) => data,
+    Data::Struct(ref data) => data.clone(),
     Data::Enum(_) => panic!("`DeserializeOver` cannot be automatically derived for enums"),
     Data::Union(_) => panic!("`DeserializeOver` cannot be automatically derived for unions"),
   };
 
   let res = match data.fields {
-    Fields::Named(fields) => impl_named_fields(struct_name, crate_name, fields),
-    Fields::Unnamed(fields) => impl_unnamed_fields(struct_name, crate_name, fields),
-    Fields::Unit => impl_unit(struct_name, crate_name),
+    Fields::Named(fields) => impl_named_fields(input, crate_name, fields),
+    Fields::Unnamed(fields) => impl_unnamed_fields(input, crate_name, fields),
+    Fields::Unit => impl_unit(input, crate_name),
   };
 
   match res {
-    Ok(res) => res,
+    Ok(res) => {
+      // panic!("{}", res);
+      res
+    }
     Err(e) => e.to_compile_error().into(),
   }
 }
@@ -48,15 +50,17 @@ pub fn derive(input: TokenStream) -> TokenStream {
 #[derive(Clone)]
 struct FieldInfo {
   name: Ident,
+  ty: Type,
   passthrough: bool,
 }
 
 fn impl_generic(
-  struct_name: Ident,
+  mut input: DeriveInput,
   real_crate_name: Ident,
   fields: Vec<FieldInfo>,
   fields_numbered: bool,
 ) -> syn::Result<TokenStream> {
+  let struct_name = &input.ident;
   let deserializer = Ident::new("__deserializer", Span::call_site());
   let crate_name = Ident::new(&("_".to_owned() + CRATE_NAME), Span::call_site());
   let export = quote! { #crate_name::export };
@@ -155,13 +159,36 @@ fn impl_generic(
     })
     .collect::<Vec<_>>();
 
+  if !input.generics.params.is_empty() {
+    let where_clause = input.generics.make_where_clause();
+
+    for field in fields.iter() {
+      let ty = &field.ty;
+
+      if field.passthrough {
+        where_clause.predicates.push(parse_quote! {
+          #ty: #crate_name::DeserializeOver<'de>
+        });
+      } else {
+        where_clause.predicates.push(parse_quote! {
+          #ty: #crate_name::export::Deserialize<'de>
+        });
+      }
+    }
+  }
+
+  let (_, ty_generics, where_clause) = input.generics.split_for_impl();
+  let impl_generics = &input.generics.params;
+
   let inner = quote! {
     #[allow(unknown_lints)]
     #[allow(rust_2018_idioms)]
     extern crate #real_crate_name as #crate_name;
 
     #[automatically_derived]
-    impl<'de> DeserializeOver<'de> for #struct_name {
+    impl<'de, #impl_generics> #crate_name::DeserializeOver<'de> for #struct_name #ty_generics
+      #where_clause
+    {
       fn deserialize_over<D>(&mut self, #deserializer: D) -> #export::Result<(), D::Error>
       where
         D: #export::Deserializer<'de>
@@ -206,9 +233,11 @@ fn impl_generic(
           #visit_str_and_bytes_impl
         }
 
-        struct __Visitor<'a>(pub &'a mut #struct_name);
+        struct __Visitor<'a, #impl_generics>(pub &'a mut #struct_name #ty_generics);
 
-        impl<'a, 'de> #export::Visitor<'de> for __Visitor<'a> {
+        impl<'a, 'de, #impl_generics> #export::Visitor<'de> for __Visitor<'a, #impl_generics>
+          #where_clause
+        {
           type Value = ();
 
           fn expecting(&self, fmt: &mut #export::fmt::Formatter) -> #export::fmt::Result {
@@ -286,7 +315,7 @@ fn impl_generic(
 }
 
 fn impl_named_fields(
-  struct_name: Ident,
+  input: DeriveInput,
   crate_name: Ident,
   fields: FieldsNamed,
 ) -> syn::Result<TokenStream> {
@@ -298,23 +327,26 @@ fn impl_named_fields(
 
       Ok(FieldInfo {
         name: x.ident.clone().unwrap(),
+        ty: x.ty.clone(),
         passthrough: attrinfo.use_deserialize_over,
       })
     })
     .collect::<Result<Vec<_>, syn::Error>>()?;
 
-  return impl_generic(struct_name, crate_name, fieldinfos, false);
+  return impl_generic(input, crate_name, fieldinfos, false);
 }
 
 fn impl_unnamed_fields(
-  _struct_name: Ident,
+  _input: DeriveInput,
   _crate_name: Ident,
   _fields: FieldsUnnamed,
 ) -> syn::Result<TokenStream> {
   unimplemented!()
 }
 
-fn impl_unit(struct_name: Ident, crate_name: Ident) -> syn::Result<TokenStream> {
+fn impl_unit(input: DeriveInput, crate_name: Ident) -> syn::Result<TokenStream> {
+  let struct_name = &input.ident;
+
   Ok(
     quote! {
       impl ::#crate_name::DeserializeOver for #struct_name {
