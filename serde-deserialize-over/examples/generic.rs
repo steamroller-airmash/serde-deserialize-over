@@ -6,6 +6,11 @@ struct ExampleStruct<T> {
   pub b: i32,
 }
 
+#[derive(DeserializeOver)]
+struct WithConstraints<T: Default> {
+  pub a: T,
+}
+
 const JSON: &str = r#"{ "a": "test" }"#;
 
 fn main() {

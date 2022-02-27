@@ -6,6 +6,17 @@ struct ExampleStruct<T> {
   pub b: i32,
 }
 
+#[derive(DeserializeOver)]
+struct WithConstraints<T: Default> {
+  pub a: T,
+}
+
+#[derive(DeserializeOver)]
+struct WithConstGenerics<const N: usize> {
+  #[deserialize_over]
+  pub a: [ExampleStruct<()>; N]
+}
+
 const JSON: &str = r#"{ "a": "test" }"#;
 
 #[test]
