@@ -125,13 +125,46 @@ pub use serde_deserialize_over_derive::DeserializeOver;
 
 use serde::Deserializer;
 
+/// Deserialize on top of an existing struct instance.
+///
+/// See the [crate-level documentation](crate) for usage details.
 pub trait DeserializeOver<'de> {
+  /// Deserialize from `de` on top of this struct instance.
   fn deserialize_over<D>(&mut self, de: D) -> Result<(), D::Error>
   where
     D: Deserializer<'de>;
 }
 
+/// Helper trait to allow calling `deserialize_over` on the deserializer itself
+/// instead of on the object.
+///
+/// This trait has a blanket implementation on all deserializers is just meant
+/// to be a helper for a different call style.
+///
+/// # Example
+/// ```
+/// use serde_deserialize_over::{DeserializeOver, DeserializeInto};
+/// # use serde_json::Deserializer;
+/// # use serde_json::de::StrRead;
+///
+/// #[derive(DeserializeOver, Default)]
+/// struct MyStruct {
+///     pub a: String,
+///     pub b: i32
+/// }
+///
+/// let json = r#"{ "a": "test" }"#;
+/// let mut inst = MyStruct::default();
+///
+/// let mut de = Deserializer::new(StrRead::new(json));
+/// de.deserialize_into(&mut inst)
+///   .expect("Failed to deserialize JSON");
+///
+/// assert_eq!(inst.a, "test");
+/// assert_eq!(inst.b, 0);
+/// ```
 pub trait DeserializeInto<'de>: Deserializer<'de> {
+  /// Deserialize a `T` into `target`.
   fn deserialize_into<T>(self, target: &mut T) -> Result<(), Self::Error>
   where
     T: DeserializeOver<'de>,
