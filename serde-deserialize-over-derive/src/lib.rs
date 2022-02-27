@@ -7,10 +7,10 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_crate::{crate_name, FoundCrate};
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{
   parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Fields, FieldsNamed, FieldsUnnamed,
-  Ident, Meta, Type,
+  Ident, Meta, Type, GenericParam, punctuated::Punctuated, Token,
 };
 
 const CRATE_NAME: &str = "serde_deserialize_over";
@@ -180,6 +180,15 @@ fn impl_generic(
   let (_, ty_generics, where_clause) = input.generics.split_for_impl();
   let impl_generics = &input.generics.params;
 
+  let visitor_params = impl_generics
+    .iter()
+    .map(|param| match param {
+      GenericParam::Type(ty) => ty.ident.to_token_stream(),
+      GenericParam::Lifetime(lt) => lt.lifetime.to_token_stream(),
+      GenericParam::Const(cnst) => cnst.ident.to_token_stream(),
+    })
+    .collect::<Punctuated<_, Token![,]>>();
+
   let inner = quote! {
     #[allow(unknown_lints)]
     #[allow(rust_2018_idioms)]
@@ -235,7 +244,7 @@ fn impl_generic(
 
         struct __Visitor<'a, #impl_generics>(pub &'a mut #struct_name #ty_generics);
 
-        impl<'a, 'de, #impl_generics> #export::Visitor<'de> for __Visitor<'a, #impl_generics>
+        impl<'a, 'de, #impl_generics> #export::Visitor<'de> for __Visitor<'a, #visitor_params>
           #where_clause
         {
           type Value = ();
@@ -341,7 +350,7 @@ fn impl_unnamed_fields(
   _crate_name: Ident,
   _fields: FieldsUnnamed,
 ) -> syn::Result<TokenStream> {
-  unimplemented!()
+  panic!("Deriving DeserializeInto for tuple structs is not supported");
 }
 
 fn impl_unit(input: DeriveInput, crate_name: Ident) -> syn::Result<TokenStream> {
