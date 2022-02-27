@@ -1,9 +1,9 @@
 //! Implementations for types within std
 
 mod array;
+mod map;
 mod option;
 mod tuple;
-mod map;
 
 use crate::DeserializeOver;
 use serde::de::{DeserializeSeed, Deserializer};

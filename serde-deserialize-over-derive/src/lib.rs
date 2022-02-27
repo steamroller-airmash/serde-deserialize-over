@@ -9,8 +9,8 @@ use proc_macro2::Span;
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{quote, ToTokens};
 use syn::{
-  parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Fields, FieldsNamed, FieldsUnnamed,
-  Ident, Meta, Type, GenericParam, punctuated::Punctuated, Token,
+  parse_macro_input, parse_quote, punctuated::Punctuated, Attribute, Data, DeriveInput, Fields,
+  FieldsNamed, FieldsUnnamed, GenericParam, Ident, Meta, Token, Type,
 };
 
 const CRATE_NAME: &str = "serde_deserialize_over";

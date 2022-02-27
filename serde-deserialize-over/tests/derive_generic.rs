@@ -14,7 +14,7 @@ struct WithConstraints<T: Default> {
 #[derive(DeserializeOver)]
 struct WithConstGenerics<const N: usize> {
   #[deserialize_over]
-  pub a: [ExampleStruct<()>; N]
+  pub a: [ExampleStruct<()>; N],
 }
 
 const JSON: &str = r#"{ "a": "test" }"#;
