@@ -139,7 +139,7 @@ impl FieldInfo {
   fn source_name(&self) -> syn::LitStr {
     match &self.srcname {
       Some(name) => syn::LitStr::new(&name, self.name.span()),
-      None => syn::LitStr::new(&self.name.to_string(), self.name.span())
+      None => syn::LitStr::new(&self.name.to_string(), self.name.span()),
     }
   }
 }
@@ -163,10 +163,7 @@ fn impl_generic(
   let field_enums = &field_enums;
   let field_enums_copy1 = field_enums;
   let field_enums_copy2 = field_enums;
-  let field_names = fields
-    .iter()
-    .map(|x| x.source_name())
-    .collect::<Vec<_>>();
+  let field_names = fields.iter().map(|x| x.source_name()).collect::<Vec<_>>();
   let field_names = &field_names;
   let indices = (0usize..fields.len()).collect::<Vec<_>>();
   let indices_u64 = indices.iter().map(|x| *x as u64);
