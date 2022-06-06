@@ -1,5 +1,8 @@
+use proc_macro2::Span;
+use quote::ToTokens;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::{Ident, LitStr, Token};
 
 pub(crate) struct ValueOption<T> {
@@ -19,6 +22,14 @@ impl<T: Parse> Parse for ValueOption<T> {
   }
 }
 
+impl<T: ToTokens> ToTokens for ValueOption<T> {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    self.ident.to_tokens(tokens);
+    self.eq.to_tokens(tokens);
+    self.value.to_tokens(tokens);
+  }
+}
+
 pub(crate) enum SerdeOption {
   Flag(Ident),
   String(ValueOption<LitStr>),
@@ -30,6 +41,24 @@ impl Parse for SerdeOption {
       input.parse().map(SerdeOption::String)
     } else {
       input.parse().map(SerdeOption::Flag)
+    }
+  }
+}
+
+impl ToTokens for SerdeOption {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    match self {
+      Self::Flag(tag) => tag.to_tokens(tokens),
+      Self::String(opt) => opt.to_tokens(tokens),
+    }
+  }
+}
+
+impl SerdeOption {
+  fn ident(&self) -> &Ident {
+    match self {
+      Self::Flag(tag) => tag,
+      Self::String(opt) => &opt.ident,
     }
   }
 }
@@ -64,6 +93,15 @@ impl SerdeAttrBody {
     }
 
     None
+  }
+
+  pub fn span_for(&self, name: &str) -> Span {
+    self
+      .attrs
+      .iter()
+      .find(|attr| attr.ident().to_string() == name)
+      .map(|attr| attr.span())
+      .unwrap_or_else(Span::call_site)
   }
 }
 

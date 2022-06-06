@@ -461,6 +461,11 @@ where
         result.deserialize_merge_fn = Some(syn::parse_str(&(lit.value() + "::deserialize_over"))?);
       } else if let Some(lit) = body.get("deserialize_with") {
         result.deserialize_fn = Some(syn::parse_str(&lit.value())?);
+      } else if let Some(_) = body.get("rename") {
+        return Err(syn::Error::new(
+          body.span_for("rename"),
+          r#"#[serde(rename = "...")] is not supported by the DeserializeOver derive macro yet."#,
+        ));
       }
     }
 
