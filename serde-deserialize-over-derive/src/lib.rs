@@ -464,6 +464,7 @@ where
         match &*opt.ident().to_string() {
           "with" => (),
           "deserialize_with" => (),
+          "serialize_with" => (),
           name => {
             return Err(syn::Error::new(
               opt.span(),
