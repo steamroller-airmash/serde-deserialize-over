@@ -4,20 +4,22 @@
 
 extern crate proc_macro;
 
-use proc_macro::TokenStream;
-use proc_macro2::Span;
+mod attr;
+
+// use proc_macro::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{quote, ToTokens};
 use syn::{
   parse_macro_input, parse_quote, punctuated::Punctuated, Attribute, Data, DeriveInput, Fields,
-  FieldsNamed, FieldsUnnamed, GenericParam, Ident, Meta, Token, Type,
+  FieldsNamed, FieldsUnnamed, GenericParam, Ident, Meta, Path, Token, Type,
 };
 
 const CRATE_NAME: &str = "serde_deserialize_over";
 
 /// Derive macro for the `DeserializeOver` trait.
-#[proc_macro_derive(DeserializeOver, attributes(deserialize_over))]
-pub fn derive(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(DeserializeOver, attributes(deserialize_over, serde))]
+pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
   let input = parse_macro_input!(input as DeriveInput);
   let crate_name =
     crate_name("serde-deserialize-over").unwrap_or(FoundCrate::Name(CRATE_NAME.to_string()));
@@ -41,7 +43,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
   match res {
     Ok(res) => {
       // panic!("{}", res);
-      res
+      res.into()
     }
     Err(e) => e.to_compile_error().into(),
   }
@@ -52,6 +54,86 @@ struct FieldInfo {
   name: Ident,
   ty: Type,
   passthrough: bool,
+  deserialize_with: Option<Path>,
+  deserialize_merge_with: Option<Path>,
+
+  enum_value: Ident,
+}
+
+impl FieldInfo {
+  fn build_de_wrapper(&self, export: &syn::Path) -> TokenStream {
+    let Self { name, ty, .. } = self;
+    let visname = Ident::new(&format!("FieldWrapper{}", self.enum_value), name.span());
+    let lt = syn::Lifetime::new("'_serde_deserialize_over_a", Span::call_site());
+
+    if self.passthrough {
+      if let Some(merge_fn) = &self.deserialize_merge_with {
+        quote::quote! {{
+          struct #visname<#lt>(&#lt mut #ty);
+
+          impl<'de> #export::DeserializeSeed<'de> for #visname<'_> {
+            type Value = ();
+
+            fn deserialize<D>(self, deserializer: D) -> #export::Result<Self::Value, D::Error>
+            where
+                D: #export::Deserializer<'de>
+            {
+              #merge_fn(deserializer, self.0)
+            }
+          }
+
+          #visname(&mut (self.0).#name)
+        }}
+      } else {
+        if self.deserialize_with.is_some() {
+          return quote::quote_spanned! {
+            name.span() => {
+              compile_error!(r#"Field uses both $[serde(deserialize_with)] and #[deserializer_over]. Use #[serde(with = "...")] so that the DeserializeOver derive will use a custom deserialize function."#);
+              unreachable!()
+            }
+          };
+        }
+
+        quote! { #export::DeserializeOverWrapper(&mut (self.0).#name) }
+      }
+    } else {
+      if let Some(de_fn) = &self.deserialize_with {
+        quote::quote! {{
+          struct #visname<#lt>(&#lt mut #ty);
+
+          impl<'de> #export::DeserializeSeed<'de> for #visname<'_> {
+            type Value = ();
+
+            fn deserialize<D>(self, deserializer: D) -> #export::Result<Self::Value, D::Error>
+            where
+                D: #export::Deserializer<'de>
+            {
+              *self.0 = #de_fn(deserializer)?;
+              Ok(())
+            }
+          }
+
+          #visname(&mut (self.0).#name)
+        }}
+      } else {
+        quote! { #export::DeserializeWrapper(&mut (self.0).#name) }
+      }
+    }
+  }
+
+  fn map_de(&self, export: &syn::Path) -> TokenStream {
+    let wrapper = self.build_de_wrapper(export);
+    quote! { map.next_value_seed(#wrapper)? }
+  }
+
+  fn seq_de(&self, export: &syn::Path) -> TokenStream {
+    let wrapper = self.build_de_wrapper(export);
+    quote! {
+      if seq.next_element_seed(#wrapper)?.is_none() {
+        return Ok(())
+      }
+    }
+  }
 }
 
 fn impl_generic(
@@ -63,7 +145,7 @@ fn impl_generic(
   let struct_name = &input.ident;
   let deserializer = Ident::new("__deserializer", Span::call_site());
   let crate_name = Ident::new(&("_".to_owned() + CRATE_NAME), Span::call_site());
-  let export = quote! { #crate_name::export };
+  let export = syn::parse_quote! { #crate_name::export };
 
   let field_enums = fields
     .iter()
@@ -121,42 +203,12 @@ fn impl_generic(
 
   let map_de_entries = fields
     .iter()
-    .map(|field| {
-      let ref name = field.name;
-      if field.passthrough {
-        quote! {
-          map.next_value_seed(
-            #crate_name::DeserializeOverWrapper(&mut (self.0).#name)
-          )?
-        }
-      } else {
-        quote! { (self.0).#name = map.next_value()? }
-      }
-    })
+    .map(|field| field.map_de(&export))
     .collect::<Vec<_>>();
 
   let visit_seq_entries = fields
     .iter()
-    .map(|field| {
-      let ref name = field.name;
-      if field.passthrough {
-        quote! {
-          match seq.next_element_seed(
-            #crate_name::DeserializeOverWrapper(&mut (self.0).#name)
-          )? {
-            Some(()) => (),
-            None => return Ok(())
-          }
-        }
-      } else {
-        quote! {
-          (self.0).#name = match seq.next_element()? {
-            Some(x) => x,
-            None => return Ok(())
-          }
-        }
-      }
-    })
+    .map(|field| field.seq_de(&export))
     .collect::<Vec<_>>();
 
   if !input.generics.params.is_empty() {
@@ -314,7 +366,7 @@ fn impl_generic(
 
   Ok(
     quote! {
-      #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+      #[allow(non_upper_case_globals, unused_attributes, unused_qualifications, non_camel_case_types)]
       const #const_name: () = {
         #inner
       };
@@ -331,13 +383,20 @@ fn impl_named_fields(
   let fieldinfos = fields
     .named
     .iter()
-    .map(|x| {
+    .enumerate()
+    .map(|(idx, x)| {
       let attrinfo = parse_attr(x.attrs.iter())?;
 
+      let name = x.ident.clone().unwrap();
+
       Ok(FieldInfo {
-        name: x.ident.clone().unwrap(),
+        enum_value: Ident::new(&format!("__field{}", idx), name.span()),
+
+        name,
         ty: x.ty.clone(),
         passthrough: attrinfo.use_deserialize_over,
+        deserialize_with: attrinfo.deserialize_fn,
+        deserialize_merge_with: attrinfo.deserialize_merge_fn,
       })
     })
     .collect::<Result<Vec<_>, syn::Error>>()?;
@@ -374,6 +433,8 @@ fn impl_unit(input: DeriveInput, crate_name: Ident) -> syn::Result<TokenStream> 
 #[derive(Default)]
 struct ParsedAttr {
   use_deserialize_over: bool,
+  deserialize_fn: Option<Path>,
+  deserialize_merge_fn: Option<Path>,
 }
 
 fn parse_attr<'a, I>(attrs: I) -> syn::Result<ParsedAttr>
@@ -383,6 +444,24 @@ where
   let mut result = ParsedAttr::default();
 
   for attr in attrs.into_iter() {
+    if attr.path.is_ident("deserialize_over") {
+      if !attr.tokens.is_empty() {
+        return Err(syn::Error::new_spanned(
+          attr.path.to_token_stream(),
+          "deserialize_over attribute should not have any arguments",
+        ));
+      }
+
+      result.use_deserialize_over = true;
+    } else if attr.path.is_ident("serde") {
+      let body: self::attr::SerdeAttrBody = syn::parse2(attr.tokens.clone())?;
+
+      if let Some(lit) = body.get("with") {
+        result.deserialize_fn = Some(syn::parse_str(&(lit.value() + "::deserialize"))?);
+        result.deserialize_merge_fn = Some(syn::parse_str(&(lit.value() + "::deserialize_merge"))?);
+      }
+    }
+
     match attr.parse_meta()? {
       Meta::Path(ref path) => {
         if path.is_ident("deserialize_over") {
