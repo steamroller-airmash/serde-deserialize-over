@@ -107,6 +107,7 @@
 //! [`Deserializer`]: serde::Deserializer
 
 mod support;
+mod tests;
 
 #[doc(hidden)]
 pub mod export {
