@@ -57,6 +57,7 @@ struct FieldInfo {
   deserialize_with: Option<Path>,
   deserialize_merge_with: Option<Path>,
 
+  srcname: Option<String>,
   enum_value: Ident,
 }
 
@@ -134,6 +135,13 @@ impl FieldInfo {
       }
     }
   }
+
+  fn source_name(&self) -> syn::LitStr {
+    match &self.srcname {
+      Some(name) => syn::LitStr::new(&name, self.name.span()),
+      None => syn::LitStr::new(&self.name.to_string(), self.name.span())
+    }
+  }
 }
 
 fn impl_generic(
@@ -149,14 +157,16 @@ fn impl_generic(
 
   let field_enums = fields
     .iter()
+    .map(|field| &field.enum_value)
     .cloned()
-    .enumerate()
-    .map(|(idx, x)| Ident::new(&format!("__field{}", idx), x.name.span()))
     .collect::<Vec<_>>();
   let field_enums = &field_enums;
   let field_enums_copy1 = field_enums;
   let field_enums_copy2 = field_enums;
-  let field_names = fields.iter().map(|x| &x.name).cloned().collect::<Vec<_>>();
+  let field_names = fields
+    .iter()
+    .map(|x| x.source_name())
+    .collect::<Vec<_>>();
   let field_names = &field_names;
   let indices = (0usize..fields.len()).collect::<Vec<_>>();
   let indices_u64 = indices.iter().map(|x| *x as u64);
@@ -167,13 +177,10 @@ fn impl_generic(
   );
 
   let visit_str_and_bytes_impl = if !fields_numbered {
-    let names_str = field_names
-      .iter()
-      .map(|x| syn::LitStr::new(&x.to_string(), x.span()))
-      .collect::<Vec<_>>();
+    let names_str = &field_names;
     let names_bytes = field_names
       .iter()
-      .map(|x| syn::LitByteStr::new(x.to_string().as_bytes(), x.span()))
+      .map(|x| syn::LitByteStr::new(x.value().as_bytes(), x.span()))
       .collect::<Vec<_>>();
 
     quote! {
@@ -385,7 +392,7 @@ fn impl_named_fields(
     .iter()
     .enumerate()
     .map(|(idx, x)| {
-      let attrinfo = parse_attr(x.attrs.iter())?;
+      let attr = parse_attr(x.attrs.iter())?;
 
       let name = x.ident.clone().unwrap();
 
@@ -394,9 +401,10 @@ fn impl_named_fields(
 
         name,
         ty: x.ty.clone(),
-        passthrough: attrinfo.use_deserialize_over,
-        deserialize_with: attrinfo.deserialize_fn,
-        deserialize_merge_with: attrinfo.deserialize_merge_fn,
+        passthrough: attr.use_deserialize_over,
+        deserialize_with: attr.deserialize_fn,
+        deserialize_merge_with: attr.deserialize_merge_fn,
+        srcname: attr.rename.map(|x| x.value()),
       })
     })
     .collect::<Result<Vec<_>, syn::Error>>()?;
@@ -435,6 +443,7 @@ struct ParsedAttr {
   use_deserialize_over: bool,
   deserialize_fn: Option<Path>,
   deserialize_merge_fn: Option<Path>,
+  rename: Option<syn::LitStr>,
 }
 
 fn parse_attr<'a, I>(attrs: I) -> syn::Result<ParsedAttr>
@@ -465,6 +474,7 @@ where
           "with" => (),
           "deserialize_with" => (),
           "serialize_with" => (),
+          "rename" => (),
           name => {
             return Err(syn::Error::new(
               opt.span(),
@@ -479,10 +489,30 @@ where
       }
 
       if let Some(lit) = body.get("with") {
-        result.deserialize_fn = Some(syn::parse_str(&(lit.value() + "::deserialize"))?);
-        result.deserialize_merge_fn = Some(syn::parse_str(&(lit.value() + "::deserialize_over"))?);
-      } else if let Some(lit) = body.get("deserialize_with") {
-        result.deserialize_fn = Some(syn::parse_str(&lit.value())?);
+        result.deserialize_fn = Some(
+          syn::parse_str(&(lit.value() + "::deserialize"))
+            .map_err(|e| syn::Error::new_spanned(lit, e))?,
+        );
+        result.deserialize_merge_fn = Some(
+          syn::parse_str(&(lit.value() + "::deserialize_over"))
+            .map_err(|e| syn::Error::new_spanned(lit, e))?,
+        );
+      }
+
+      if let Some(lit) = body.get("deserialize_with") {
+        if result.deserialize_fn.is_some() {
+          return Err(syn::Error::new(
+            body.span_for("deserialize_with"),
+            "Cannot specify both `with` and `deserialize_with`",
+          ));
+        }
+
+        result.deserialize_fn =
+          Some(syn::parse_str(&lit.value()).map_err(|e| syn::Error::new_spanned(lit, e))?);
+      }
+
+      if let Some(lit) = body.get("rename") {
+        result.rename = Some(lit.clone());
       }
     }
 
