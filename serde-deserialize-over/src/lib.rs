@@ -107,22 +107,25 @@
 //! [`Deserializer`]: serde::Deserializer
 
 mod support;
+mod tests;
 
 #[doc(hidden)]
 pub mod export {
-  pub use serde::de::{Error, MapAccess, SeqAccess, Unexpected, Visitor};
+  pub use serde::de::{DeserializeSeed, Error, MapAccess, SeqAccess, Unexpected, Visitor};
   pub use serde::{Deserialize, Deserializer};
 
   pub use std::fmt;
   pub use std::marker::PhantomData;
   pub use std::option::Option::{None, Some};
   pub use std::result::Result::{self, Err, Ok};
+
+  pub use crate::support::{DeserializeOverWrapper, DeserializeWrapper};
+  pub use crate::DeserializeOver;
 }
 
-#[doc(hidden)]
-pub use crate::support::DeserializeOverWrapper;
 pub use serde_deserialize_over_derive::DeserializeOver;
 
+use crate::support::DeserializeOverWrapper;
 use serde::Deserializer;
 
 /// Deserialize on top of an existing struct instance.
