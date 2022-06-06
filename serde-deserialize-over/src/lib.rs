@@ -47,8 +47,6 @@
 //! [`DeserializeOver`] the derive macro supports the `#[deserialize_over]`
 //! attribute.
 //!
-//! # Serde Attributes
-//!
 //! ```
 //! use serde_deserialize_over::DeserializeOver;
 //! # use serde_json::Deserializer;
@@ -125,10 +123,9 @@ pub mod export {
   pub use crate::DeserializeOver;
 }
 
-#[doc(hidden)]
-pub use crate::support::DeserializeOverWrapper;
 pub use serde_deserialize_over_derive::DeserializeOver;
 
+use crate::support::DeserializeOverWrapper;
 use serde::Deserializer;
 
 /// Deserialize on top of an existing struct instance.
