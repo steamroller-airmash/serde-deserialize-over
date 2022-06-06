@@ -46,7 +46,7 @@
 //! To mark that subfields should instead be deserialized via
 //! [`DeserializeOver`] the derive macro supports the `#[deserialize_over]`
 //! attribute.
-//! 
+//!
 //! # Serde Attributes
 //!
 //! ```

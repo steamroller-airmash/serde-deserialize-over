@@ -55,10 +55,25 @@ impl ToTokens for SerdeOption {
 }
 
 impl SerdeOption {
-  fn ident(&self) -> &Ident {
+  pub fn ident(&self) -> &Ident {
     match self {
       Self::Flag(tag) => tag,
       Self::String(opt) => &opt.ident,
+    }
+  }
+
+  pub fn is_flag(&self) -> bool {
+    match self {
+      Self::Flag(_) => true,
+      _ => false,
+    }
+  }
+
+  #[allow(dead_code)]
+  pub fn is_opt(&self) -> bool {
+    match self {
+      Self::String(_) => true,
+      _ => false,
     }
   }
 }
@@ -95,6 +110,7 @@ impl SerdeAttrBody {
     None
   }
 
+  #[allow(dead_code)]
   pub fn span_for(&self, name: &str) -> Span {
     self
       .attrs

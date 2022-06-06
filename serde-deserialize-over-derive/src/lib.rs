@@ -441,6 +441,8 @@ fn parse_attr<'a, I>(attrs: I) -> syn::Result<ParsedAttr>
 where
   I: Iterator<Item = &'a Attribute>,
 {
+  use syn::spanned::Spanned;
+
   let mut result = ParsedAttr::default();
 
   for attr in attrs.into_iter() {
@@ -456,16 +458,30 @@ where
     } else if attr.path.is_ident("serde") {
       let body: self::attr::SerdeAttrBody = syn::parse2(attr.tokens.clone())?;
 
+      for opt in body.attrs.iter() {
+        // Put serde arguments that we support here so that we can error out on
+        // unsupported ones.
+        match &*opt.ident().to_string() {
+          "with" => (),
+          "deserialize_with" => (),
+          name => {
+            return Err(syn::Error::new(
+              opt.span(),
+              &format!(
+                r#"#[serde({}{}) is not supported by the DeserializeOver derive macro."#,
+                name,
+                if opt.is_flag() { r#" = "...""# } else { "" }
+              ),
+            ))
+          }
+        }
+      }
+
       if let Some(lit) = body.get("with") {
         result.deserialize_fn = Some(syn::parse_str(&(lit.value() + "::deserialize"))?);
         result.deserialize_merge_fn = Some(syn::parse_str(&(lit.value() + "::deserialize_over"))?);
       } else if let Some(lit) = body.get("deserialize_with") {
         result.deserialize_fn = Some(syn::parse_str(&lit.value())?);
-      } else if let Some(_) = body.get("rename") {
-        return Err(syn::Error::new(
-          body.span_for("rename"),
-          r#"#[serde(rename = "...")] is not supported by the DeserializeOver derive macro yet."#,
-        ));
       }
     }
 
