@@ -458,7 +458,7 @@ where
 
       if let Some(lit) = body.get("with") {
         result.deserialize_fn = Some(syn::parse_str(&(lit.value() + "::deserialize"))?);
-        result.deserialize_merge_fn = Some(syn::parse_str(&(lit.value() + "::deserialize_merge"))?);
+        result.deserialize_merge_fn = Some(syn::parse_str(&(lit.value() + "::deserialize_over"))?);
       }
     }
 

@@ -6,7 +6,7 @@ mod option;
 mod tuple;
 
 use crate::DeserializeOver;
-use serde::de::{DeserializeSeed, Deserializer, Deserialize};
+use serde::de::{Deserialize, DeserializeSeed, Deserializer};
 
 #[doc(hidden)]
 pub struct DeserializeOverWrapper<'a, T>(pub &'a mut T);
@@ -29,7 +29,7 @@ pub struct DeserializeWrapper<'a, T>(pub &'a mut T);
 
 impl<'a, 'de, T> DeserializeSeed<'de> for DeserializeWrapper<'a, T>
 where
-  T: Deserialize<'de>
+  T: Deserialize<'de>,
 {
   type Value = ();
 
