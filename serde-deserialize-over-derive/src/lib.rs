@@ -6,13 +6,15 @@ extern crate proc_macro;
 
 mod attr;
 
+use std::collections::HashSet;
+
 // use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream};
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{quote, ToTokens};
 use syn::{
   parse_macro_input, parse_quote, punctuated::Punctuated, Attribute, Data, DeriveInput, Fields,
-  FieldsNamed, FieldsUnnamed, GenericParam, Ident, Meta, Path, Token, Type,
+  FieldsNamed, FieldsUnnamed, GenericParam, Ident, Path, Token, Type,
 };
 
 const CRATE_NAME: &str = "serde_deserialize_over";
@@ -463,15 +465,18 @@ where
       result.use_deserialize_over = true;
     } else if attr.path.is_ident("serde") {
       let body: self::attr::SerdeAttrBody = syn::parse2(attr.tokens.clone())?;
+      let mut seen = HashSet::new();
 
       for opt in body.attrs.iter() {
+        let ident = opt.ident().to_string();
+
         // Put serde arguments that we support here so that we can error out on
         // unsupported ones.
-        match &*opt.ident().to_string() {
-          "with" => (),
-          "deserialize_with" => (),
-          "serialize_with" => (),
-          "rename" => (),
+        match &*ident {
+          "with" | "deserialize_with" | "serialize_with" => (),
+          "rename" | "serialize" | "deserialize" => (),
+          // #[serde(default)] is ignored since we already have values for all fields
+          "default" => (),
           name => {
             return Err(syn::Error::new(
               opt.span(),
@@ -482,6 +487,16 @@ where
               ),
             ))
           }
+        }
+
+        if !seen.insert(ident) {
+          return Err(syn::Error::new_spanned(
+            opt,
+            &format!(
+              "Option `{}` cannot be specified multiple times",
+              opt.ident()
+            ),
+          ));
         }
       }
 
@@ -511,15 +526,17 @@ where
       if let Some(lit) = body.get("rename") {
         result.rename = Some(lit.clone());
       }
-    }
 
-    match attr.parse_meta()? {
-      Meta::Path(ref path) => {
-        if path.is_ident("deserialize_over") {
-          result.use_deserialize_over = true;
+      if let Some(lit) = body.get("deserialize") {
+        if result.rename.is_some() {
+          return Err(syn::Error::new(
+            body.span_for("deserialize"),
+            "Cannot specify both `rename` and `deserialize`",
+          ));
         }
+
+        result.rename = Some(lit.clone());
       }
-      Meta::List(_) | Meta::NameValue(_) => (),
     }
   }
 
