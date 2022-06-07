@@ -6,6 +6,8 @@ extern crate proc_macro;
 
 mod attr;
 
+use std::collections::HashSet;
+
 // use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream};
 use proc_macro_crate::{crate_name, FoundCrate};
@@ -463,13 +465,16 @@ where
       result.use_deserialize_over = true;
     } else if attr.path.is_ident("serde") {
       let body: self::attr::SerdeAttrBody = syn::parse2(attr.tokens.clone())?;
+      let mut seen = HashSet::new();
 
       for opt in body.attrs.iter() {
+        let ident = opt.ident().to_string();
+
         // Put serde arguments that we support here so that we can error out on
         // unsupported ones.
-        match &*opt.ident().to_string() {
+        match &*ident {
           "with" | "deserialize_with" | "serialize_with" => (),
-          "rename" => (),
+          "rename" | "serialize" | "deserialize" => (),
           // #[serde(default)] is ignored since we already have values for all fields
           "default" => (),
           name => {
@@ -482,6 +487,13 @@ where
               ),
             ))
           }
+        }
+
+        if !seen.insert(ident) {
+          return Err(syn::Error::new_spanned(
+            opt,
+            &format!("Option `{}` cannot be specified multiple times", opt.ident()),
+          ));
         }
       }
 
