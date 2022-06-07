@@ -523,6 +523,17 @@ where
       if let Some(lit) = body.get("rename") {
         result.rename = Some(lit.clone());
       }
+
+      if let Some(lit) = body.get("deserialize") {
+        if result.rename.is_some() {
+          return Err(syn::Error::new(
+            body.span_for("deserialize"),
+            "Cannot specify both `rename` and `deserialize`"
+          ));
+        }
+
+        result.rename = Some(lit.clone());
+      }
     }
   }
 
