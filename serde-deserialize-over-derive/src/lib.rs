@@ -468,10 +468,10 @@ where
         // Put serde arguments that we support here so that we can error out on
         // unsupported ones.
         match &*opt.ident().to_string() {
-          "with" => (),
-          "deserialize_with" => (),
-          "serialize_with" => (),
+          "with" | "deserialize_with" | "serialize_with" => (),
           "rename" => (),
+          // #[serde(default)] is ignored since we already have values for all fields
+          "default" => (),
           name => {
             return Err(syn::Error::new(
               opt.span(),
