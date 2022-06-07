@@ -14,7 +14,7 @@ use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{quote, ToTokens};
 use syn::{
   parse_macro_input, parse_quote, punctuated::Punctuated, Attribute, Data, DeriveInput, Fields,
-  FieldsNamed, FieldsUnnamed, GenericParam, Ident, Meta, Path, Token, Type,
+  FieldsNamed, FieldsUnnamed, GenericParam, Ident, Path, Token, Type,
 };
 
 const CRATE_NAME: &str = "serde_deserialize_over";
@@ -523,15 +523,6 @@ where
       if let Some(lit) = body.get("rename") {
         result.rename = Some(lit.clone());
       }
-    }
-
-    match attr.parse_meta()? {
-      Meta::Path(ref path) => {
-        if path.is_ident("deserialize_over") {
-          result.use_deserialize_over = true;
-        }
-      }
-      Meta::List(_) | Meta::NameValue(_) => (),
     }
   }
 
