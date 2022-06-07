@@ -492,7 +492,10 @@ where
         if !seen.insert(ident) {
           return Err(syn::Error::new_spanned(
             opt,
-            &format!("Option `{}` cannot be specified multiple times", opt.ident()),
+            &format!(
+              "Option `{}` cannot be specified multiple times",
+              opt.ident()
+            ),
           ));
         }
       }
@@ -528,7 +531,7 @@ where
         if result.rename.is_some() {
           return Err(syn::Error::new(
             body.span_for("deserialize"),
-            "Cannot specify both `rename` and `deserialize`"
+            "Cannot specify both `rename` and `deserialize`",
           ));
         }
 

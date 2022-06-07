@@ -20,7 +20,7 @@ mod combo_deserialize_with_and_deserialize_over {}
 /// ```compile_fail
 /// use serde_deserialize_over::*;
 /// use serde::*;
-/// 
+///
 /// #[derive(DeserializeOver)]
 /// struct MultiRename {
 ///   #[serde(rename = "a", deserialize = "b")]
@@ -32,7 +32,7 @@ mod combo_rename_and_deserialize {}
 /// ```compile_fail
 /// use serde_deserialize_over::*;
 /// use serde::*;
-/// 
+///
 /// #[derive(DeserializeOver)]
 /// struct RepeatedOption {
 ///   #[serde(rename = "x", rename = "y")]
