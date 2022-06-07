@@ -1,6 +1,6 @@
 [package]
 name = "serde-deserialize-over"
-version = "0.1.2"
+version = "0.1.1"
 authors = ["STEAMROLLER"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -14,7 +14,7 @@ exclude = [
 
 [dependencies]
 serde = "1.0"
-serde-deserialize-over-derive = { version = "=0.1.2", path = "../serde-deserialize-over-derive" }
+serde-deserialize-over-derive = { version = "=0.1.1", path = "../serde-deserialize-over-derive" }
 
 [dev-dependencies]
 serde_json = "1.0"
